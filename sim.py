@@ -54,7 +54,12 @@ class Grid:
                 # Lowest x and y
                 lx, ly = math.floor(x), math.floor(y)
 
-                if lx < 0 or ly < 0 or lx+1 == self.width or ly+1 == self.height:
+                # The bounds depend on which field is being interpolated: U and V each have an extra cell in each direction (horizontal/vertical)
+                max_width, max_height = self.width, self.height
+                if idx == 0: max_width += 1
+                elif idx == 1: max_height += 1
+
+                if lx < 0 or ly < 0 or lx+1 == max_width or ly+1 == max_height:
                         raise ValueError(f'x and y out of bounds: ({x}, {y})')
 
                 bottom_left = field[ly, lx]
@@ -73,8 +78,35 @@ class Grid:
                         + top_right * (1 - dist_right) * (1 - dist_top)
 
         def convect(self, dt):
+                new_u = self.u.copy()
+                new_v = self.v.copy()
+
+                # Only conect inside the boundary. U has an extra cell horizontally
                 for y in range(1, self.height-1):
-                        pass
+                        for x in range(1, self.width):
+                                # Get velocity at current u, offset by 0.5 vertically
+                                u_pos = (x, y + 0.5)
+                                u_u = self.u[y,x]
+                                u_v = self.interpolate(u_pos[0], u_pos[1], 1)
+                                # Find where to take the new u from
+                                u_source = (u_pos[0] - dt * u_u, u_pos[1] - dt * u_v)
+                                # Set new u
+                                new_u[y,x] = self.interpolate(u_source[0], u_source[1], 0)
+
+                # V has an extra cell vertically
+                for y in range(1, self.height):
+                        for x in range(1, self.width-1):
+                                # Get velocity at current v, offset by 0.5 horizontally
+                                v_pos = (x + 0.5, y)
+                                v_u = self.interpolate(v_pos[0], v_pos[1], 0)
+                                v_v = self.v[y,x]
+                                # Find where to take the new u from
+                                v_source = (v_pos[0] - dt * v_u, v_pos[1] - dt * v_v)
+                                # Set new v
+                                new_v[y,x] = self.interpolate(v_source[0], v_source[1], 1)
+
+                self.u = new_u
+                self.v = new_v
 
 def calc_time_step(u, v):
         '''
@@ -86,15 +118,19 @@ def calc_time_step(u, v):
         return grid_spacing / max_vel
 
 def click_callback(grid, event):
-        print(event.xdata, event.ydata, grid.interpolate(event.xdata, event.ydata, 1))
+        plt.gcf().clear()
+        grid.convect(0.05)
+        grid.plot()
+        plt.draw()
+
+        print(event.xdata, event.ydata, grid.interpolate(event.xdata, event.ydata, 0))
 
 plt.connect('button_press_event', lambda event: click_callback(grid, event))
 
 grid = Grid(10, 10)
-grid.u = np.full(grid.u.shape, 10)
-grid.v = np.full(grid.v.shape, 10)
-grid.v[5,5] = 0
-print(grid.u.shape, grid.u_meshes[0].shape, grid.u_meshes[1].shape)
+grid.u = np.full(grid.u.shape, 10, dtype=float)
+grid.v = np.full(grid.v.shape, 5, dtype=float)
+grid.u[:,5:] = 5
 grid.plot()
 
 plt.show()

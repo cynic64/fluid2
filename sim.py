@@ -98,29 +98,27 @@ class Grid:
                 # Only conect inside the boundary. U has an extra cell horizontally
                 for y in range(1, self.height-1):
                         for x in range(1, self.width):
-                                # Get velocity at current u, offset by 0.5 vertically
-                                u_pos = (x, y + 0.5)
-                                u_u = self.u[y,x]
-                                u_v = self.interpolate(u_pos[0], u_pos[1], 1)
-                                # Find where to take the new u from
-                                u_source = (u_pos[0] - dt * u_u, u_pos[1] - dt * u_v)
-                                # Set new u
-                                new_u[y,x] = self.interpolate(u_source[0], u_source[1], 0)
+                                # Get new velocity for u, offset by 0.5 vertically
+                                new_u[y,x] = self.rk2_trace(x, y + 0.5, dt, 0)
 
                 # V has an extra cell vertically
                 for y in range(1, self.height):
                         for x in range(1, self.width-1):
-                                # Get velocity at current v, offset by 0.5 horizontally
-                                v_pos = (x + 0.5, y)
-                                v_u = self.interpolate(v_pos[0], v_pos[1], 0)
-                                v_v = self.v[y,x]
-                                # Find where to take the new u from
-                                v_source = (v_pos[0] - dt * v_u, v_pos[1] - dt * v_v)
-                                # Set new v
-                                new_v[y,x] = self.interpolate(v_source[0], v_source[1], 1)
+                                # Get new velocity at v, offset by 0.5 horizontally
+                                new_v[y,x] = self.rk2_trace(x + 0.5, y, dt, 1)
 
                 self.u = new_u
                 self.v = new_v
+
+        def rk2_trace(self, x, y, dt, idx):
+                # Order-two Runge-Kutta interpolation: take half an Euler step and use the velocity there as an average over the whole step
+                half_x = x - self.interpolate(x, y, 0) * 0.5 * dt
+                half_y = y - self.interpolate(x, y, 1) * 0.5 * dt
+                half_vel = (self.interpolate(half_x, half_y, 0), self.interpolate(half_x, half_y, 1))
+
+                final_x = x - half_vel[0] * dt
+                final_y = y - half_vel[1] * dt
+                return self.interpolate(final_x, final_y, idx)
 
         def average_velocities(self):
                 u_avg = (self.u[:,:-1] + self.u[:,1:]) / 2
@@ -148,7 +146,7 @@ plt.connect('button_press_event', lambda event: click_callback(grid, event))
 
 grid = Grid(10, 10)
 grid.u = np.full(grid.u.shape, 10, dtype=float)
-grid.v = np.full(grid.v.shape, 0, dtype=float)
+grid.v = np.full(grid.v.shape, 5, dtype=float)
 grid.u[:,5:] = 5
 grid.plot()
 

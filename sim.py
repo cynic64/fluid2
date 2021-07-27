@@ -25,16 +25,14 @@ class Grid:
                 self.u_meshes = np.meshgrid(np.arange(0, self.width+1, 1), np.arange(0.5, self.height + 0.5, 1))
                 self.v_meshes = np.meshgrid(np.arange(0.5, self.width+0.5, 1), np.arange(0, self.height + 1, 1))
 
-        def plot(self):
-                plt.title('Pressure and velocity')
+                # Also generate positions for the averaged velocity fields, where velocities are at grid cell centers
+                self.avg_meshes = np.meshgrid(np.arange(0.5, self.width+0.5, 1), np.arange(0.5, self.height+0.5, 1))
 
-                # Plot grid lines
-                axes = plt.gca()
-                x_ticks = np.arange(0, self.width+1, 1)
-                y_ticks = np.arange(0, self.height+1, 1)
-                axes.set_xticks(x_ticks)
-                axes.set_yticks(y_ticks)
-                plt.grid()
+        def plot(self):
+                # Subplot 1: individual velocities
+                plt.subplot(1, 2, 1)
+                plt.title('Pressure and velocity')
+                self.plot_grid_lines()
 
                 # Plot pressure
                 common.plot_scalar_field(self.pressure, self.width, self.height)
@@ -42,6 +40,22 @@ class Grid:
                 # Plot velociy fields
                 plt.quiver(self.u_meshes[0], self.u_meshes[1], self.u, np.zeros_like(self.u), angles='xy', scale = 200)
                 plt.quiver(self.v_meshes[0], self.v_meshes[1], np.zeros_like(self.v), self.v, angles='xy', scale = 200)
+
+                # Subplot 2: average velocity
+                plt.subplot(1, 2, 2)
+                plt.title('Average velocity')
+                self.plot_grid_lines()
+
+                avg_u, avg_v = self.average_velocities()
+                plt.quiver(self.avg_meshes[0], self.avg_meshes[1], avg_u, avg_v, angles='xy', scale = 200)
+
+        def plot_grid_lines(self):
+                axes = plt.gca()
+                x_ticks = np.arange(0, self.width+1, 1)
+                y_ticks = np.arange(0, self.height+1, 1)
+                axes.set_xticks(x_ticks)
+                axes.set_yticks(y_ticks)
+                plt.grid()
 
         def interpolate(self, x, y, idx):
                 field = (self.u, self.v)[idx]
@@ -108,6 +122,11 @@ class Grid:
                 self.u = new_u
                 self.v = new_v
 
+        def average_velocities(self):
+                u_avg = (self.u[:,:-1] + self.u[:,1:]) / 2
+                v_avg = (self.v[:-1,:] + self.v[1:,:]) / 2
+                return (u_avg, v_avg)
+
 def calc_time_step(u, v):
         '''
         Calculates the time step according to the CFL condition: Fluid should not flow more than
@@ -123,13 +142,13 @@ def click_callback(grid, event):
         grid.plot()
         plt.draw()
 
-        print(event.xdata, event.ydata, grid.interpolate(event.xdata, event.ydata, 0))
+        #print(event.xdata, event.ydata, grid.interpolate(event.xdata, event.ydata, 0))
 
 plt.connect('button_press_event', lambda event: click_callback(grid, event))
 
 grid = Grid(10, 10)
 grid.u = np.full(grid.u.shape, 10, dtype=float)
-grid.v = np.full(grid.v.shape, 5, dtype=float)
+grid.v = np.full(grid.v.shape, 0, dtype=float)
 grid.u[:,5:] = 5
 grid.plot()
 

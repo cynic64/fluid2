@@ -91,11 +91,11 @@ class Grid:
                         + top_left * (1 - dist_left) * (1 - dist_top) \
                         + top_right * (1 - dist_right) * (1 - dist_top)
 
-        def convect(self, dt):
+        def apply_convection(self, dt):
                 new_u = self.u.copy()
                 new_v = self.v.copy()
 
-                # Only conect inside the boundary. U has an extra cell horizontally
+                # Only convect inside the boundary. U has an extra cell horizontally
                 for y in range(1, self.height-1):
                         for x in range(1, self.width):
                                 # Get new velocity for u, offset by 0.5 vertically
@@ -125,6 +125,17 @@ class Grid:
                 v_avg = (self.v[:-1,:] + self.v[1:,:]) / 2
                 return (u_avg, v_avg)
 
+        def apply_viscosity(self, dt, nu):
+                # Laplacians for U (dx and dy are 1, so there is no need to divide)
+                u_diff2_x = self.u[1:-1,2:] - 2*self.u[1:-1,1:-1] + self.u[1:-1,:-2]
+                u_diff2_y = self.u[2:,1:-1] - 2*self.u[1:-1,1:-1] + self.u[:-2,1:-1]
+                self.u[1:-1,1:-1] += nu * dt * (u_diff2_x + u_diff2_y)
+
+                # Laplacians for V
+                v_diff2_x = self.v[1:-1,2:] - 2*self.v[1:-1,1:-1] + self.v[1:-1,:-2]
+                v_diff2_y = self.v[2:,1:-1] - 2*self.v[1:-1,1:-1] + self.v[:-2,1:-1]
+                self.v[1:-1,1:-1] += nu * dt * (v_diff2_x + v_diff2_y)
+
 def calc_time_step(u, v):
         '''
         Calculates the time step according to the CFL condition: Fluid should not flow more than
@@ -136,7 +147,8 @@ def calc_time_step(u, v):
 
 def click_callback(grid, event):
         plt.gcf().clear()
-        grid.convect(0.05)
+        #grid.apply_convection(0.05)
+        grid.apply_viscosity(0.05, 1)
         grid.plot()
         plt.draw()
 
@@ -145,9 +157,9 @@ def click_callback(grid, event):
 plt.connect('button_press_event', lambda event: click_callback(grid, event))
 
 grid = Grid(10, 10)
-grid.u = np.full(grid.u.shape, 10, dtype=float)
-grid.v = np.full(grid.v.shape, 5, dtype=float)
-grid.u[:,5:] = 5
+grid.u = np.full(grid.u.shape, 0, dtype=float)
+grid.v = np.full(grid.v.shape, 0, dtype=float)
+grid.v[:,4] = 50
 grid.plot()
 
 plt.show()

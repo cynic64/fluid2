@@ -91,6 +91,25 @@ class Grid:
                         + top_left * (1 - dist_left) * (1 - dist_top) \
                         + top_right * (1 - dist_right) * (1 - dist_top)
 
+        def apply_bcs(self):
+                # Left
+                self.u[:,0] = -self.u[:,1]
+                # Right
+                self.u[:,-1] = -self.u[:,-2]
+                # Bottom
+                self.u[0,:] = 0
+                # Top
+                self.u[-1,:] = 10
+
+                # Left
+                self.v[:,0] = 0
+                # Right
+                self.v[:,-1] = 0
+                # Bottom
+                self.v[0,:] = -self.v[1,:]
+                # Top
+                self.v[-1,:] = -self.v[-2,:]
+
         def apply_convection(self, dt):
                 new_u = self.u.copy()
                 new_v = self.v.copy()
@@ -147,7 +166,8 @@ def calc_time_step(u, v):
 
 def click_callback(grid, event):
         plt.gcf().clear()
-        #grid.apply_convection(0.05)
+        grid.apply_bcs()
+        grid.apply_convection(0.05)
         grid.apply_viscosity(0.05, 1)
         grid.plot()
         plt.draw()
@@ -157,9 +177,6 @@ def click_callback(grid, event):
 plt.connect('button_press_event', lambda event: click_callback(grid, event))
 
 grid = Grid(10, 10)
-grid.u = np.full(grid.u.shape, 0, dtype=float)
-grid.v = np.full(grid.v.shape, 0, dtype=float)
-grid.v[:,4] = 50
 grid.plot()
 
 plt.show()

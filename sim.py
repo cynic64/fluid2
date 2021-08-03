@@ -28,6 +28,37 @@ class Grid:
                 # Also generate positions for the averaged velocity fields, where velocities are at grid cell centers
                 self.avg_meshes = np.meshgrid(np.arange(0.5, self.width+0.5, 1), np.arange(0.5, self.height+0.5, 1))
 
+                # Generate pressure coefficient matrix
+                self.pressure_coef = np.zeros((width*height, width*height))
+                for y in range(height):
+                        for x in range(width):
+                                idx = y*width + x
+
+                                # In the row of this index, set the cell itself to the negative
+                                # number of neighbors and the corresponding neighbors to 1
+                                if x >= 1:
+                                        # Left neighbor exists
+                                        self.pressure_coef[idx,idx] -= 1
+                                        self.pressure_coef[idx-1,idx] = 1
+                                if x < width - 1:
+                                        # Right neighbor exists
+                                        self.pressure_coef[idx,idx] -= 1
+                                        self.pressure_coef[idx+1,idx] = 1
+                                if y >= 1:
+                                        # Lower neighbor exists
+                                        self.pressure_coef[idx,idx] -= 1
+                                        self.pressure_coef[idx-width,idx] = 1
+                                if y < height - 1:
+                                        # Upper neighbor exists
+                                        self.pressure_coef[idx,idx] -= 1
+                                        self.pressure_coef[idx+width,idx] = 1
+
+                # Directly set the pressure of one cell, because all that matters is the pressure
+                # gradient
+                self.pressure_coef[0,0] = 1
+
+                print(self.pressure_coef)
+
         def plot(self):
                 # Subplot 1: individual velocities
                 plt.subplot(1, 2, 1)
@@ -155,6 +186,25 @@ class Grid:
                 v_diff2_y = self.v[2:,1:-1] - 2*self.v[1:-1,1:-1] + self.v[:-2,1:-1]
                 self.v[1:-1,1:-1] += nu * dt * (v_diff2_x + v_diff2_y)
 
+        def apply_pressure(self, dt, rho):
+                # Solve for pressure
+                u_diff_x = self.u[:,1:] - self.u[:,:-1]
+                v_diff_y = self.v[1:,:] - self.v[:-1,:]
+                divergence = u_diff_x + v_diff_y
+
+                pressure_rhs = rho / dt * divergence
+                pressure_rhs_flat = np.reshape(pressure_rhs, (self.width*self.height))
+
+                pressure_flat = np.linalg.solve(self.pressure_coef, pressure_rhs_flat)
+                self.pressure = np.reshape(pressure_flat, (self.width, self.height))
+
+                # Apply pressure
+                p_diff_x = self.pressure[1:-1,1:] - self.pressure[1:-1,:-1]
+                p_diff_y = self.pressure[1:,1:-1] - self.pressure[:-1,1:-1]
+
+                self.u[1:-1,1:-1] += -(dt / rho) * p_diff_x
+                self.v[1:-1,1:-1] += -(dt / rho) * p_diff_y
+
 def calc_time_step(u, v):
         '''
         Calculates the time step according to the CFL condition: Fluid should not flow more than
@@ -165,10 +215,15 @@ def calc_time_step(u, v):
         return grid_spacing / max_vel
 
 def click_callback(grid, event):
+        dt, nu, rho = 0.05, 0.05, 0.3
         plt.gcf().clear()
-        grid.apply_bcs()
-        grid.apply_convection(0.05)
-        grid.apply_viscosity(0.05, 1)
+
+        for i in range(100):
+                grid.apply_bcs()
+                grid.apply_convection(dt)
+                grid.apply_viscosity(dt, nu)
+                grid.apply_pressure(dt, rho)
+
         grid.plot()
         plt.draw()
 
@@ -176,7 +231,7 @@ def click_callback(grid, event):
 
 plt.connect('button_press_event', lambda event: click_callback(grid, event))
 
-grid = Grid(10, 10)
+grid = Grid(20, 20)
 grid.plot()
 
 plt.show()

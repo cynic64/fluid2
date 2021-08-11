@@ -14,9 +14,8 @@ class Grid:
         The pressure field is (width, height), the u field is (width+1, height), and the v field is
         (width, height+1)
         '''
-        def __init__(self, width, height):
-                self.width = width
-                self.height = height
+        def __init__(self, width, height, dx, dy):
+                self.width, self.height, self.dx, self.dy = width, height, dx, dy
                 self.pressure = np.zeros((height, width))
                 self.u = np.zeros((height+2, width+1))
                 self.v = np.zeros((height+1, width+2))
@@ -54,6 +53,9 @@ class Grid:
                                         self.pressure_coef[idx,idx] -= 1
                                         self.pressure_coef[idx+width,idx] = 1
 
+                # Scale the pressure coefficient
+                self.pressure_coef /= dx * dy
+
                 # Directly set the pressure of one cell, because all that matters is the pressure
                 # gradient
                 self.pressure_coef[0,0] = 1
@@ -75,8 +77,10 @@ class Grid:
 
                 # Subplot 2: average velocity
                 plt.subplot(1, 2, 2)
-                plt.title('Average velocity')
-                self.plot_grid_lines()
+                plt.title('Vorticity and Average velocity')
+
+                vort = vorticity(self.u, self.v, self.dx, self.dy)
+                common.plot_scalar_field(self.pressure, self.width, self.height)
 
                 avg_u, avg_v = self.average_velocities()
                 plt.quiver(self.avg_meshes[0], self.avg_meshes[1], avg_u, avg_v, angles='xy', scale = 200)
@@ -90,49 +94,44 @@ class Grid:
                 plt.grid()
 
         def apply_bcs(self):
-                # Left
-                self.u[:,0] = -self.u[:,1]
-                # Right
-                self.u[:,-1] = -self.u[:,-2]
-                # Bottom
-                self.u[0:1,:] = 0
-                # Top
-                self.u[-2:-1,:] = 10
+                # Prescribed values
+                u_north, u_south, u_west, u_east = 10, 0, 0, 0
+                v_north, v_south, v_west, v_east = 0, 0, 0, 0
 
-                # Left
-                self.v[:,0:1] = 0
-                # Right
-                self.v[:,-2:1] = 0
-                # Bottom
-                self.v[0,:] = -self.v[1,:]
-                # Top
-                self.v[-1,:] = -self.v[-2,:]
+                self.u[0,:] = 2*u_south - self.u[1,:]
+                self.u[-1,:] = 2*u_north - self.u[-2,:]
+                self.u[:,0] = u_west
+                self.u[:,-1] = u_east
+
+                self.v[0,:] = v_south
+                self.v[-1,:] = v_north
+                self.v[:,0] = 2*v_west - self.v[:,1]
+                self.v[:,-1] = 2*v_east - self.v[:,-2]
 
         def apply_convection(self, dt):
-                dx, dy = 1, 1
                 v_at_u = (self.v[1:,1:-2] + self.v[1:,2:-1] + self.v[:-1,1:-2] + self.v[:-1,2:-1]) / 4
                 u_at_v = (self.u[1:-2,1:] + self.u[2:-1,1:] + self.u[1:-2,:-1] + self.u[2:-1,:-1]) / 4
 
                 # Predict
                 predicted_u = self.u.copy()
-                u_diff_x_forward = (self.u[1:-1,2:] - self.u[1:-1,1:-1]) / dx
-                u_diff_y_forward = (self.u[2:,1:-1] - self.u[1:-1,1:-1]) / dy
+                u_diff_x_forward = (self.u[1:-1,2:] - self.u[1:-1,1:-1]) / self.dx
+                u_diff_y_forward = (self.u[2:,1:-1] - self.u[1:-1,1:-1]) / self.dy
                 predicted_u[1:-1,1:-1] += -dt * (self.u[1:-1,1:-1] * u_diff_x_forward + v_at_u * u_diff_y_forward)
 
                 predicted_v = self.v.copy()
-                v_diff_x_forward = (self.v[1:-1,2:] - self.v[1:-1,1:-1]) / dx
-                v_diff_y_forward = (self.v[2:,1:-1] - self.v[1:-1,1:-1]) / dy
+                v_diff_x_forward = (self.v[1:-1,2:] - self.v[1:-1,1:-1]) / self.dx
+                v_diff_y_forward = (self.v[2:,1:-1] - self.v[1:-1,1:-1]) / self.dy
                 predicted_v[1:-1,1:-1] += -dt * (u_at_v * v_diff_x_forward + self.v[1:-1,1:-1] * v_diff_y_forward)
 
                 # Correct
                 u_corrected = (self.u + predicted_u) / 2
-                u_pred_diff_x_backward = (predicted_u[1:-1,1:-1] - predicted_u[1:-1,:-2]) / dx
-                u_pred_diff_y_backward = (predicted_u[1:-1,1:-1] - predicted_u[:-2,1:-1]) / dy
+                u_pred_diff_x_backward = (predicted_u[1:-1,1:-1] - predicted_u[1:-1,:-2]) / self.dx
+                u_pred_diff_y_backward = (predicted_u[1:-1,1:-1] - predicted_u[:-2,1:-1]) / self.dy
                 u_corrected[1:-1,1:-1] += -0.5 * dt * (self.u[1:-1,1:-1] * u_pred_diff_x_backward + v_at_u * u_pred_diff_y_backward)
 
                 v_corrected = (self.v + predicted_v) / 2
-                v_pred_diff_x_backward = (predicted_v[1:-1,1:-1] - predicted_v[1:-1,:-2]) / dx
-                v_pred_diff_y_backward = (predicted_v[1:-1,1:-1] - predicted_v[:-2,1:-1]) / dy
+                v_pred_diff_x_backward = (predicted_v[1:-1,1:-1] - predicted_v[1:-1,:-2]) / self.dx
+                v_pred_diff_y_backward = (predicted_v[1:-1,1:-1] - predicted_v[:-2,1:-1]) / self.dy
                 v_corrected[1:-1,1:-1] += -0.5 * dt * (u_at_v * v_pred_diff_x_backward + self.v[1:-1,1:-1] * v_pred_diff_y_backward)
 
                 self.u[1:-1,1:-1] = u_corrected[1:-1,1:-1]
@@ -145,19 +144,19 @@ class Grid:
 
         def apply_viscosity(self, dt, nu):
                 # Laplacians for U (dx and dy are 1, so there is no need to divide)
-                u_diff2_x = self.u[1:-1,2:] - 2*self.u[1:-1,1:-1] + self.u[1:-1,:-2]
-                u_diff2_y = self.u[2:,1:-1] - 2*self.u[1:-1,1:-1] + self.u[:-2,1:-1]
+                u_diff2_x = (self.u[1:-1,2:] - 2*self.u[1:-1,1:-1] + self.u[1:-1,:-2]) / (self.dx**2)
+                u_diff2_y = (self.u[2:,1:-1] - 2*self.u[1:-1,1:-1] + self.u[:-2,1:-1]) / (self.dy**2)
                 self.u[1:-1,1:-1] += nu * dt * (u_diff2_x + u_diff2_y)
 
                 # Laplacians for V
-                v_diff2_x = self.v[1:-1,2:] - 2*self.v[1:-1,1:-1] + self.v[1:-1,:-2]
-                v_diff2_y = self.v[2:,1:-1] - 2*self.v[1:-1,1:-1] + self.v[:-2,1:-1]
+                v_diff2_x = (self.v[1:-1,2:] - 2*self.v[1:-1,1:-1] + self.v[1:-1,:-2]) / (self.dx**2)
+                v_diff2_y = (self.v[2:,1:-1] - 2*self.v[1:-1,1:-1] + self.v[:-2,1:-1]) / (self.dy**2)
                 self.v[1:-1,1:-1] += nu * dt * (v_diff2_x + v_diff2_y)
 
         def apply_pressure(self, dt, rho):
                 # Solve for pressure
-                u_diff_x = self.u[1:-1,1:] - self.u[1:-1,:-1]
-                v_diff_y = self.v[1:,1:-1] - self.v[:-1,1:-1]
+                u_diff_x = (self.u[1:-1,1:] - self.u[1:-1,:-1]) / self.dx
+                v_diff_y = (self.v[1:,1:-1] - self.v[:-1,1:-1]) / self.dy
                 divergence = u_diff_x + v_diff_y
 
                 pressure_rhs = rho / dt * divergence
@@ -167,20 +166,31 @@ class Grid:
                 self.pressure = np.reshape(pressure_flat, (self.width, self.height))
 
                 # Apply pressure
-                p_diff_x = self.pressure[:,1:] - self.pressure[:,:-1]
-                p_diff_y = self.pressure[1:,:] - self.pressure[:-1,:]
+                p_diff_x = (self.pressure[:,1:] - self.pressure[:,:-1]) / self.dx
+                p_diff_y = (self.pressure[1:,:] - self.pressure[:-1,:]) / self.dy
 
                 self.u[1:-1,1:-1] += -(dt / rho) * p_diff_x
                 self.v[1:-1,1:-1] += -(dt / rho) * p_diff_y
 
-def calc_time_step(u, v):
+def vorticity(u, v, dx, dy):
+        u_diff_x = (u[:,1:] - u[:,:-1]) / dx
+        u_diff_y = (u[1:,:] - u[:-1,:]) / dy
+        u_diff_y_centered = (u_diff_y[1:,1:] + u_diff_y[1:,:-1] + u_diff_y[:-1,1:] + u_diff_y[:-1,:-1]) / 4
+
+        v_diff_x = (v[:,1:] - v[:,:-1]) / dx
+        v_diff_x_centered = (v_diff_x[1:,1:] + v_diff_x[1:,:-1] + v_diff_x[:-1,1:] + v_diff_x[:-1,:-1]) / 4
+        v_diff_y = (v[1:,:] - v[:-1,:]) / dy
+
+        return v_diff_x - u_diff_y
+
+def calc_time_step(dx, dy, u, v):
         '''
         Calculates the time step according to the CFL condition: Fluid should not flow more than
         one grid spacing in each step.
         '''
-        grid_spacing = 1
-        max_vel = max(np.max(np.abs(u)), np.max(np.abs(v)))
-        return grid_spacing / max_vel
+        grid_spacing = min(dx, dy)
+        max_vel = max(max(np.max(np.abs(u)), np.max(np.abs(v))), 0.01)
+        return grid_spacing / max_vel * 0.2
 
 def click_callback(grid, event):
         dt, nu, rho = 0.05, 0.05, 0.3
@@ -199,11 +209,11 @@ def click_callback(grid, event):
 
 plt.connect('button_press_event', lambda event: click_callback(grid, event))
 
-grid = Grid(60, 60)
+grid = Grid(30, 30, 0.06, 0.06)
 grid.plot()
 
 ct = 0
-dt, nu, rho = 0.05, 0.1, 1.0
+dt, nu, rho = 0.01, 0.0001, 10.0
 while 1:
         plt.clf()
         grid.plot()
@@ -213,6 +223,8 @@ while 1:
 
         for i in range(100):
                 grid.apply_bcs()
+                dt = calc_time_step(0.06, 0.06, grid.u, grid.v)
+                print(f'dt: {dt}')
                 grid.apply_convection(dt)
                 grid.apply_viscosity(dt, nu)
                 grid.apply_pressure(dt, rho)
